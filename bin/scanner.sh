@@ -8,7 +8,9 @@ scan_id="$target_id-$(date +%s)"
 scan_path="$ppath/scans/$scan_id"
 raw_path="$ppath/rawdata/$target_id/"
 threads=13
-notify="slack"
+notify="tel"
+
+nuclei -update && nuclei -ut
 
 mkdir -p "$scan_path"
 mkdir -p "$raw_path"
@@ -18,7 +20,11 @@ cp "$ppath/scope/$1" "$scan_path/scope.txt"
 
 echo "$ppath"
 
-cat scope.txt | subfinder -nW -json -o subs.json | jq --unbuffered -r '.host' | dnsx -json -o dnsx.json | jq --unbuffered -r '.host' | httpx -p- -json -o http.json | jq --unbuffered -r '.url' | nuclei -o nuclei.json -json -severity low,medium,high,critical -t ~/nuclei-templates --stats | jq -c --unbuffered 'del(.timestamp) | del(."curl-command")' | anew "$raw_path/nuclei.json" | notify -pc "$ppath/config/notify.yaml" -mf "New vuln found! {{data}}"
+cat scope.txt | subfinder -nW -json -o subs.json
+cat subs.json | jq --unbuffered -r '.host' | dnsx -json -o dnsx.json
+cat dnsx.json | jq --unbuffered -r '.host' | naabu -c 15 -rate 500 -p - -silent | httpx -json -o http.json
+cat http.json | jq --unbuffered -r '.url' | nuclei -o nuclei.json -json -severity low,medium,high,critical -t ~/nuclei-templates --stats
+cat nuclei.json | jq -c --unbuffered 'del(.timestamp) | del(."curl-command")' | anew "$raw_path/nuclei.json" | notify -pc "$ppath/config/notify.yaml" -mf "New vuln found! {{data}}"
 
 cat dnsx.json | jq -r '.host' | tlsx -json -o tls.json
 
